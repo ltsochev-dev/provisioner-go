@@ -1,0 +1,78 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"erp/provisioner/internal/config"
+	"erp/provisioner/internal/database"
+	"erp/provisioner/internal/httpapi"
+	"erp/provisioner/internal/tenant"
+)
+
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
+	if err := run(context.Background(), logger); err != nil {
+		logger.Error("provisioner stopped", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, logger *slog.Logger) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	db, err := database.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	tenantStore := tenant.NewMySQLStore(db)
+	tenantService := tenant.NewService(tenantStore)
+
+	server := httpapi.NewServer(httpapi.ServerConfig{
+		Addr:           cfg.HTTPAddr(),
+		ProvisionToken: cfg.ProvisionerToken,
+		TenantService:  tenantService,
+		Logger:         logger,
+	})
+
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("starting server", "addr", server.Addr)
+		errCh <- server.ListenAndServe()
+	}()
+
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		logger.Info("shutting down server")
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return err
+		}
+
+		return nil
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+
+		return err
+	}
+}
