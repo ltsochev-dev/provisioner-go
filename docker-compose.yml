@@ -1,0 +1,30 @@
+services:
+  mysql:
+    image: mariadb:lts
+    ports:
+      - "${FORWARD_DB_PORT:-3306}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "root"
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_DATABASE: "erp_global"
+      MYSQL_USER: "erp_global_user"
+      MYSQL_PASSWORD: "erp_pass"
+      MYSQL_ALLOW_EMPTY_PASSWORD: 1
+    volumes:
+      - "pgomysql:/var/lib/mysql"
+    networks:
+      - pgo
+    healthcheck:
+      test:
+        - CMD
+        - mysqladmin
+        - ping
+        - "-perp_pass"
+      retries: 3
+      timeout: 5s
+networks:
+  pgo:
+    driver: bridge
+volumes:
+  pgomysql:
+    driver: local

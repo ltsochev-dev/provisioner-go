@@ -10,4 +10,5 @@ vet:
 	go vet ./...
 
 run:
+	docker compose up -d
 	go run ./cmd/provisioner
