@@ -140,7 +140,7 @@ func TestCreateTenantTriggersProvisioningWorker(t *testing.T) {
 		ProvisioningWorker: worker,
 		Logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
-	req := httptest.NewRequest(http.MethodPost, "/tenant", strings.NewReader(`{"email":"admin@acme.example","name":"Acme Ltd","slug":"acme","domain":"acme.example.com","plan":"starter"}`))
+	req := httptest.NewRequest(http.MethodPost, "/tenants", strings.NewReader(`{"email":"admin@acme.example","name":"Acme Ltd","slug":"acme","domain":"acme.example.com","plan":"starter"}`))
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 

@@ -43,6 +43,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	tenantService := tenant.NewService(tenantStore)
 	provisioningService := provisioning.NewService(provisioning.Config{
 		Store:  tenantStore,
+		DB:     db,
 		Logger: logger,
 	})
 

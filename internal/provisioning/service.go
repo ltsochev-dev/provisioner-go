@@ -2,8 +2,11 @@ package provisioning
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"erp/provisioner/internal/tenant"
@@ -29,6 +32,7 @@ type Config struct {
 	BatchSize        int
 	Logger           *slog.Logger
 	Store            TenantStore
+	DB               *sql.DB
 }
 
 type Service struct {
@@ -37,6 +41,7 @@ type Service struct {
 	batchSize        int
 	logger           *slog.Logger
 	store            TenantStore
+	db               *sql.DB
 	triggerCh        chan struct{}
 }
 
@@ -67,6 +72,7 @@ func NewService(cfg Config) *Service {
 		batchSize:        batchSize,
 		logger:           logger,
 		store:            cfg.Store,
+		db:               cfg.DB,
 		triggerCh:        make(chan struct{}, 1),
 	}
 }
@@ -100,6 +106,10 @@ func (s *Service) Run(ctx context.Context) {
 func (s *Service) scan(ctx context.Context) {
 	if s.store == nil {
 		s.logger.Error("provisioning worker has no tenant store")
+		return
+	}
+	if s.db == nil {
+		s.logger.Error("provisioning worker has no database connection")
 		return
 	}
 
@@ -146,9 +156,9 @@ func (s *Service) provision(ctx context.Context, tenantID string) {
 		name string
 		run  func(context.Context, tenant.Tenant) error
 	}{
+		{name: "create k8s namespace", run: s.createK8sNamespace},
 		{name: "create database", run: s.createDatabase},
 		{name: "add users", run: s.addUsers},
-		{name: "create k8s namespace", run: s.createK8sNamespace},
 		{name: "create pods", run: s.createPods},
 		{name: "create ingress", run: s.createIngress},
 	}
@@ -170,8 +180,25 @@ func (s *Service) provision(ctx context.Context, tenantID string) {
 }
 
 func (s *Service) createDatabase(ctx context.Context, t tenant.Tenant) error {
-	return ErrUnimplemented
+	dbName := tenantToDbName(t)
+
+	query := fmt.Sprintf(
+		"CREATE DATABASE IF NOT EXISTS `%s`",
+		strings.ReplaceAll(dbName, "`", "``"),
+	)
+
+	_, err := s.db.ExecContext(ctx, query)
+
+	return err
 }
+
+// ensure namespace
+// # ensure database
+// ensure db user
+// ensure db grants
+// ensure secrets
+// ensure workload
+// ensure ingress
 
 func (s *Service) addUsers(ctx context.Context, t tenant.Tenant) error {
 	return ErrUnimplemented
@@ -187,4 +214,26 @@ func (s *Service) createPods(ctx context.Context, t tenant.Tenant) error {
 
 func (s *Service) createIngress(ctx context.Context, t tenant.Tenant) error {
 	return ErrUnimplemented
+}
+
+func tenantToDbName(t tenant.Tenant) string {
+	const prefix = "tenant_"
+
+	var b strings.Builder
+	b.Grow(len(prefix) + len(t.Slug))
+
+	b.WriteString(prefix)
+
+	for _, r := range strings.ToLower(t.Slug) {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-' || r == '_':
+			b.WriteRune('_')
+		}
+	}
+
+	return b.String()
 }
