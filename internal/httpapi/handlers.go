@@ -81,7 +81,9 @@ func (api *API) getTenant(w http.ResponseWriter, r *http.Request) {
 func (api *API) getTenants(w http.ResponseWriter, r *http.Request) {
 	tenants, err := api.tenants.All(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Internal server error: "+err.Error())
+		api.logger.Error("tenant list failed", "err", err)
+		writeError(w, http.StatusInternalServerError, "tenant list failed")
+		return
 	}
 
 	writeJSON(w, http.StatusOK, tenants)

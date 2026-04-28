@@ -22,12 +22,7 @@ func (s *MySQLStore) CreateTenant(ctx context.Context, insert TenantInsert) (Ten
 		return Tenant{}, err
 	}
 
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
+	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO tenants 
@@ -61,7 +56,6 @@ func (s *MySQLStore) CreateTenant(ctx context.Context, insert TenantInsert) (Ten
 	if err := tx.Commit(); err != nil {
 		return Tenant{}, mapMySQLError(err)
 	}
-	committed = true
 
 	return Tenant{
 		ID:     insert.ID,
@@ -70,7 +64,7 @@ func (s *MySQLStore) CreateTenant(ctx context.Context, insert TenantInsert) (Ten
 		Domain: insert.Domain,
 		Slug:   insert.Slug,
 		Plan:   insert.Plan,
-		Status: "active",
+		Status: "pending",
 	}, nil
 }
 
@@ -86,7 +80,7 @@ func mapMySQLError(err error) error {
 func (s *MySQLStore) FindByAPIKey(ctx context.Context, key string) (Tenant, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT tenants.id, tenants.email, tenants.name, tenants.slug, tenants.domain, tenants.plan
+		`SELECT tenants.id, tenants.email, tenants.name, tenants.slug, tenants.domain, tenants.plan, tenants.status
 		 FROM tenants
 		 JOIN tenant_keys ON tenant_keys.tenant_id = tenants.id
 		 WHERE tenant_keys.key = ?`,
@@ -94,7 +88,7 @@ func (s *MySQLStore) FindByAPIKey(ctx context.Context, key string) (Tenant, erro
 	)
 
 	var tenant Tenant
-	if err := row.Scan(&tenant.ID, &tenant.Email, &tenant.Name, &tenant.Slug, &tenant.Domain, &tenant.Plan); err != nil {
+	if err := row.Scan(&tenant.ID, &tenant.Email, &tenant.Name, &tenant.Slug, &tenant.Domain, &tenant.Plan, &tenant.Status); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Tenant{}, ErrNotFound
 		}
@@ -102,14 +96,13 @@ func (s *MySQLStore) FindByAPIKey(ctx context.Context, key string) (Tenant, erro
 		return Tenant{}, err
 	}
 
-	tenant.Status = "active"
 	return tenant, nil
 }
 
 func (s *MySQLStore) FindBySlugAndAPIKey(ctx context.Context, slug string, key string) (Tenant, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT tenants.id, tenants.email, tenants.name, tenants.slug, tenants.domain, tenants.plan
+		`SELECT tenants.id, tenants.email, tenants.name, tenants.slug, tenants.domain, tenants.plan, tenants.status
 		 FROM tenants
 		 JOIN tenant_keys ON tenant_keys.tenant_id = tenants.id
 		 WHERE tenants.slug = ? AND tenant_keys.key = ?`,
@@ -118,7 +111,7 @@ func (s *MySQLStore) FindBySlugAndAPIKey(ctx context.Context, slug string, key s
 	)
 
 	var tenant Tenant
-	if err := row.Scan(&tenant.ID, &tenant.Email, &tenant.Name, &tenant.Slug, &tenant.Domain, &tenant.Plan); err != nil {
+	if err := row.Scan(&tenant.ID, &tenant.Email, &tenant.Name, &tenant.Slug, &tenant.Domain, &tenant.Plan, &tenant.Status); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Tenant{}, ErrNotFound
 		}
@@ -126,7 +119,6 @@ func (s *MySQLStore) FindBySlugAndAPIKey(ctx context.Context, slug string, key s
 		return Tenant{}, err
 	}
 
-	tenant.Status = "active"
 	return tenant, nil
 }
 
@@ -163,4 +155,46 @@ func (s *MySQLStore) All(ctx context.Context) ([]Tenant, error) {
 	}
 
 	return tenants, nil
+}
+
+func (s *MySQLStore) BeginProvision(ctx context.Context, tenantId string) (Tenant, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Tenant{}, err
+	}
+
+	defer tx.Rollback()
+
+	row := tx.QueryRowContext(ctx, `
+		SELECT id, name, email, slug, domain, plan, status FROM tenants
+		WHERE id = ? AND status = ?
+		FOR UPDATE SKIP LOCKED
+	`,
+		tenantId, "pending",
+	)
+
+	var tenant Tenant
+	if err := row.Scan(&tenant.ID, &tenant.Name, &tenant.Email, &tenant.Slug, &tenant.Domain, &tenant.Plan, &tenant.Status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Tenant{}, ErrNotFound
+		}
+
+		return Tenant{}, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE tenants
+		SET status = ?
+		WHERE id = ?
+	`, "working", tenantId); err != nil {
+		return Tenant{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Tenant{}, err
+	}
+
+	tenant.Status = "working"
+
+	return tenant, nil
 }

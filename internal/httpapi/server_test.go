@@ -17,6 +17,15 @@ type fakeTenantStore struct {
 	tenantByKey map[string]tenant.Tenant
 }
 
+func (s fakeTenantStore) All(context.Context) ([]tenant.Tenant, error) {
+	tenants := make([]tenant.Tenant, 0, len(s.tenantByKey))
+	for _, tenant := range s.tenantByKey {
+		tenants = append(tenants, tenant)
+	}
+
+	return tenants, nil
+}
+
 func (s fakeTenantStore) CreateTenant(_ context.Context, insert tenant.TenantInsert) (tenant.Tenant, error) {
 	return tenant.Tenant{
 		ID:     insert.ID,
@@ -48,6 +57,10 @@ func (s fakeTenantStore) FindBySlugAndAPIKey(_ context.Context, slug string, key
 }
 
 type notFoundTenantStore struct{}
+
+func (notFoundTenantStore) All(context.Context) ([]tenant.Tenant, error) {
+	return nil, tenant.ErrNotFound
+}
 
 func (notFoundTenantStore) CreateTenant(context.Context, tenant.TenantInsert) (tenant.Tenant, error) {
 	return tenant.Tenant{}, tenant.ErrNotFound
@@ -105,6 +118,61 @@ func TestCreateTenant(t *testing.T) {
 
 	if !strings.Contains(rec.Body.String(), `"tenant":"acme"`) {
 		t.Fatalf("response body = %s, want tenant slug", rec.Body.String())
+	}
+}
+
+func TestGetTenantsRequiresProvisionerToken(t *testing.T) {
+	t.Parallel()
+
+	server := testServer()
+	req := httptest.NewRequest(http.MethodGet, "/tenants", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestGetTenants(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(ServerConfig{
+		Addr:           ":0",
+		ProvisionToken: "test-token",
+		TenantService: tenant.NewService(fakeTenantStore{
+			tenantByKey: map[string]tenant.Tenant{
+				"acme-key": {
+					ID:     "11111111-1111-4111-8111-111111111111",
+					Email:  "admin@acme.example",
+					Name:   "Acme Ltd",
+					Slug:   "acme",
+					Domain: "acme.example",
+					Plan:   "starter",
+					Status: "active",
+				},
+			},
+		}),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	req := httptest.NewRequest(http.MethodGet, "/tenants", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+
+	server.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got []tenant.Tenant
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if len(got) != 1 || got[0].Slug != "acme" {
+		t.Fatalf("tenants = %+v, want acme tenant", got)
 	}
 }
 

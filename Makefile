@@ -18,6 +18,9 @@ build: build-linux-amd64 build-linux-arm64
 build-native:
 	go build -o $(BUILD_DIR)/$(BINARY) $(PACKAGE)
 
+build-windows-amd64:
+	GOOS=windows GOARCH=amd64 go build -o $(BUILD_DIR)/$(BINARY)-windows-amd64 $(PACKAGE)
+
 build-linux-amd64:
 	GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(BINARY)-linux-amd64 $(PACKAGE)
 
