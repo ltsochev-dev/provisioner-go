@@ -36,6 +36,11 @@ func (api *API) createTenant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if errors.Is(err, tenant.ErrAlreadyExists) {
+			writeError(w, http.StatusConflict, "tenant already exists")
+			return
+		}
+
 		api.logger.Error("tenant creation failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "tenant creation failed")
 		return
@@ -46,11 +51,22 @@ func (api *API) createTenant(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) getTenant(w http.ResponseWriter, r *http.Request) {
-	resp, err := api.tenants.GetBySlug(r.Context(), r.PathValue("slug"))
+	token, ok := bearerToken(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "missing or invalid Authorization header")
+		return
+	}
+
+	resp, err := api.tenants.GetBySlug(r.Context(), r.PathValue("slug"), token)
 	if err != nil {
 		var validationErr tenant.ValidationError
 		if errors.As(err, &validationErr) {
 			writeError(w, http.StatusBadRequest, validationErr.Error())
+			return
+		}
+
+		if errors.Is(err, tenant.ErrNotFound) {
+			writeError(w, http.StatusForbidden, "tenant key does not belong to requested tenant")
 			return
 		}
 

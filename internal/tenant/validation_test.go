@@ -13,6 +13,8 @@ func TestValidateCreateRequest(t *testing.T) {
 		{
 			name: "valid request",
 			req: CreateRequest{
+				Email:  "admin@acme.example.com",
+				Name:   "Acme Ltd",
 				Slug:   "acme-main",
 				Domain: "acme.example.com",
 				Plan:   "starter",
@@ -21,6 +23,8 @@ func TestValidateCreateRequest(t *testing.T) {
 		{
 			name: "missing slug",
 			req: CreateRequest{
+				Email:  "admin@acme.example.com",
+				Name:   "Acme Ltd",
 				Domain: "acme.example.com",
 				Plan:   "starter",
 			},
@@ -29,6 +33,8 @@ func TestValidateCreateRequest(t *testing.T) {
 		{
 			name: "unsafe slug",
 			req: CreateRequest{
+				Email:  "admin@acme.example.com",
+				Name:   "Acme Ltd",
 				Slug:   "Acme_Main",
 				Domain: "acme.example.com",
 				Plan:   "starter",

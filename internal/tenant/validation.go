@@ -13,6 +13,10 @@ func (e ValidationError) Error() string {
 
 func ValidateCreateRequest(req CreateRequest) error {
 	switch {
+	case req.Email == "":
+		return ValidationError{Field: "email", Message: "email is required"}
+	case req.Name == "":
+		return ValidationError{Field: "name", Message: "name is required"}
 	case req.Slug == "":
 		return ValidationError{Field: "slug", Message: "slug is required"}
 	case req.Domain == "":

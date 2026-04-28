@@ -11,7 +11,8 @@ services:
       MYSQL_PASSWORD: "erp_pass"
       MYSQL_ALLOW_EMPTY_PASSWORD: 1
     volumes:
-      - "pgomysql:/var/lib/mysql"
+      - pgomysql:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d
     networks:
       - pgo
     healthcheck:
