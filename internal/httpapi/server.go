@@ -25,6 +25,7 @@ func NewServer(cfg ServerConfig) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", api.health)
 	mux.Handle("POST /tenants", api.provisionerAuth(http.HandlerFunc(api.createTenant)))
+	mux.Handle("GET /tenants", api.provisionerAuth(http.HandlerFunc(api.getTenants)))
 	mux.Handle("GET /tenant/{slug}", api.tenantAuth(http.HandlerFunc(api.getTenant)))
 	mux.Handle("GET /tenants/{slug}", api.tenantAuth(http.HandlerFunc(api.getTenant)))
 

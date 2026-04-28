@@ -16,6 +16,7 @@ var (
 )
 
 type Store interface {
+	All(ctx context.Context) ([]Tenant, error)
 	CreateTenant(ctx context.Context, insert TenantInsert) (Tenant, error)
 	FindByAPIKey(ctx context.Context, key string) (Tenant, error)
 	FindBySlugAndAPIKey(ctx context.Context, slug string, key string) (Tenant, error)
@@ -77,6 +78,10 @@ func (s *Service) GetBySlug(ctx context.Context, slug string, key string) (Tenan
 
 func (s *Service) AuthenticateAPIKey(ctx context.Context, key string) (Tenant, error) {
 	return s.store.FindByAPIKey(ctx, key)
+}
+
+func (s *Service) All(ctx context.Context) ([]Tenant, error) {
+	return s.store.All(ctx)
 }
 
 func GenerateSecretKey(env string) (string, error) {

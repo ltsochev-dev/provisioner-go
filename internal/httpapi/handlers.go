@@ -77,3 +77,12 @@ func (api *API) getTenant(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, resp)
 }
+
+func (api *API) getTenants(w http.ResponseWriter, r *http.Request) {
+	tenants, err := api.tenants.All(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal server error: "+err.Error())
+	}
+
+	writeJSON(w, http.StatusOK, tenants)
+}

@@ -129,3 +129,38 @@ func (s *MySQLStore) FindBySlugAndAPIKey(ctx context.Context, slug string, key s
 	tenant.Status = "active"
 	return tenant, nil
 }
+
+func (s *MySQLStore) All(ctx context.Context) ([]Tenant, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, email, name, slug, domain, plan FROM tenants ORDER BY created_at ASC`)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var tenants []Tenant
+
+	for rows.Next() {
+		var t Tenant
+
+		err := rows.Scan(
+			&t.ID,
+			&t.Email,
+			&t.Name,
+			&t.Slug,
+			&t.Domain,
+			&t.Plan,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		tenants = append(tenants, t)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return tenants, nil
+}
