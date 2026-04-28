@@ -184,9 +184,9 @@ func (s *MySQLStore) BeginProvision(ctx context.Context, tenantId string) (Tenan
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE tenants
-		SET status = ?
+		SET status = ?, locked_at = NOW()
 		WHERE id = ?
-	`, "working", tenantId); err != nil {
+	`, "provisioning", tenantId); err != nil {
 		return Tenant{}, err
 	}
 
@@ -194,7 +194,7 @@ func (s *MySQLStore) BeginProvision(ctx context.Context, tenantId string) (Tenan
 		return Tenant{}, err
 	}
 
-	tenant.Status = "working"
+	tenant.Status = "provisioning"
 
 	return tenant, nil
 }
