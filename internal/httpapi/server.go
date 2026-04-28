@@ -9,16 +9,18 @@ import (
 )
 
 type ServerConfig struct {
-	Addr           string
-	ProvisionToken string
-	TenantService  *tenant.Service
-	Logger         *slog.Logger
+	Addr               string
+	ProvisionToken     string
+	TenantService      *tenant.Service
+	ProvisioningWorker ProvisioningWorker
+	Logger             *slog.Logger
 }
 
 func NewServer(cfg ServerConfig) *http.Server {
 	api := &API{
 		provisionToken: cfg.ProvisionToken,
 		tenants:        cfg.TenantService,
+		provisioning:   cfg.ProvisioningWorker,
 		logger:         cfg.Logger,
 	}
 

@@ -13,6 +13,7 @@ import (
 	"erp/provisioner/internal/config"
 	"erp/provisioner/internal/database"
 	"erp/provisioner/internal/httpapi"
+	"erp/provisioner/internal/provisioning"
 	"erp/provisioner/internal/tenant"
 )
 
@@ -40,12 +41,17 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	tenantStore := tenant.NewMySQLStore(db)
 	tenantService := tenant.NewService(tenantStore)
+	provisioningService := provisioning.NewService(provisioning.Config{
+		Store:  tenantStore,
+		Logger: logger,
+	})
 
 	server := httpapi.NewServer(httpapi.ServerConfig{
-		Addr:           cfg.HTTPAddr(),
-		ProvisionToken: cfg.ProvisionerToken,
-		TenantService:  tenantService,
-		Logger:         logger,
+		Addr:               cfg.HTTPAddr(),
+		ProvisionToken:     cfg.ProvisionerToken,
+		TenantService:      tenantService,
+		ProvisioningWorker: provisioningService,
+		Logger:             logger,
 	})
 
 	errCh := make(chan error, 1)
@@ -56,6 +62,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	go provisioningService.Run(ctx)
 
 	select {
 	case <-ctx.Done():

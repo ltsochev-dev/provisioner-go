@@ -12,7 +12,12 @@ import (
 type API struct {
 	provisionToken string
 	tenants        *tenant.Service
+	provisioning   ProvisioningWorker
 	logger         *slog.Logger
+}
+
+type ProvisioningWorker interface {
+	Trigger()
 }
 
 func (api *API) health(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +52,10 @@ func (api *API) createTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.logger.Info("creating tenant", "slug", req.Slug, "domain", req.Domain, "plan", req.Plan)
+	if api.provisioning != nil {
+		api.provisioning.Trigger()
+	}
+
 	writeJSON(w, http.StatusCreated, resp)
 }
 

@@ -74,6 +74,14 @@ func (notFoundTenantStore) FindBySlugAndAPIKey(context.Context, string, string) 
 	return tenant.Tenant{}, tenant.ErrNotFound
 }
 
+type fakeProvisioningWorker struct {
+	triggered bool
+}
+
+func (w *fakeProvisioningWorker) Trigger() {
+	w.triggered = true
+}
+
 func TestHealthDoesNotRequireAuth(t *testing.T) {
 	t.Parallel()
 
@@ -118,6 +126,32 @@ func TestCreateTenant(t *testing.T) {
 
 	if !strings.Contains(rec.Body.String(), `"tenant":"acme"`) {
 		t.Fatalf("response body = %s, want tenant slug", rec.Body.String())
+	}
+}
+
+func TestCreateTenantTriggersProvisioningWorker(t *testing.T) {
+	t.Parallel()
+
+	worker := &fakeProvisioningWorker{}
+	server := NewServer(ServerConfig{
+		Addr:               ":0",
+		ProvisionToken:     "test-token",
+		TenantService:      tenant.NewService(fakeTenantStore{tenantByKey: map[string]tenant.Tenant{}}),
+		ProvisioningWorker: worker,
+		Logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/tenant", strings.NewReader(`{"email":"admin@acme.example","name":"Acme Ltd","slug":"acme","domain":"acme.example.com","plan":"starter"}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+
+	server.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	if !worker.triggered {
+		t.Fatal("provisioning worker was not triggered")
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 )
@@ -157,6 +158,48 @@ func (s *MySQLStore) All(ctx context.Context) ([]Tenant, error) {
 	return tenants, nil
 }
 
+func (s *MySQLStore) Pending(ctx context.Context, limit int) ([]Tenant, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, email, name, slug, domain, plan, status
+		FROM tenants
+		WHERE status = ?
+		ORDER BY created_at ASC
+		LIMIT ?
+	`, "pending", limit)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var tenants []Tenant
+
+	for rows.Next() {
+		var t Tenant
+
+		err := rows.Scan(
+			&t.ID,
+			&t.Email,
+			&t.Name,
+			&t.Slug,
+			&t.Domain,
+			&t.Plan,
+			&t.Status,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		tenants = append(tenants, t)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return tenants, nil
+}
+
 func (s *MySQLStore) BeginProvision(ctx context.Context, tenantId string) (Tenant, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -197,4 +240,73 @@ func (s *MySQLStore) BeginProvision(ctx context.Context, tenantId string) (Tenan
 	tenant.Status = "provisioning"
 
 	return tenant, nil
+}
+
+func (s *MySQLStore) ReleaseStaleProvisioning(ctx context.Context, olderThan time.Duration) ([]Tenant, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, email, name, slug, domain, plan, status
+		FROM tenants
+		WHERE status = ? AND locked_at IS NOT NULL AND TIMESTAMPDIFF(MICROSECOND, locked_at, NOW(6)) > ?
+		FOR UPDATE SKIP LOCKED
+	`, "provisioning", olderThan.Microseconds())
+	if err != nil {
+		return nil, err
+	}
+
+	var tenants []Tenant
+
+	for rows.Next() {
+		var t Tenant
+
+		err := rows.Scan(
+			&t.ID,
+			&t.Email,
+			&t.Name,
+			&t.Slug,
+			&t.Domain,
+			&t.Plan,
+			&t.Status,
+		)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+
+		tenants = append(tenants, t)
+	}
+
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, t := range tenants {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE tenants
+			SET status = ?, locked_at = NULL
+			WHERE id = ?
+		`, "pending", t.ID); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	for i := range tenants {
+		tenants[i].Status = "pending"
+	}
+
+	return tenants, nil
 }
