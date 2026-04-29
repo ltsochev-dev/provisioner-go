@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -31,6 +32,7 @@ type TenantStore interface {
 type KubernetesService interface {
 	NamespaceExists(ctx context.Context, name string) (bool, error)
 	CreateNamespace(ctx context.Context, name string) error
+	CreateOrUpdateSecret(ctx context.Context, ns string, name string, values map[string]string) error
 }
 
 type Config struct {
@@ -286,7 +288,36 @@ func (s *Service) setDb(ctx context.Context, run *provisionRun) error {
 }
 
 func (s *Service) addSecrets(ctx context.Context, run *provisionRun) error {
-	return ErrUnimplemented
+	ns := tenantToNamespace(run.tenant)
+
+	appKey, err := randomLaravelAppKey()
+	if err != nil {
+		return err
+	}
+
+	values := map[string]string{
+		"APP_NAME":         run.tenant.Name,
+		"APP_KEY":          appKey,
+		"APP_ENV":          "production",
+		"APP_DEBUG":        "false",
+		"APP_URL":          "https://" + run.tenant.Domain,
+		"DB_CONNECTION":    "mysql",
+		"DB_HOST":          "localhost",
+		"DB_PORT":          "3306",
+		"DB_DATABASE":      run.db.name,
+		"DB_USERNAME":      run.db.user,
+		"DB_PASSWORD":      run.db.password,
+		"SESSION_DRIVER":   "database",
+		"QUEUE_CONNECTION": "database",
+		"CACHE_STORE":      "database",
+	}
+
+	err = s.kubernetes.CreateOrUpdateSecret(ctx, ns, "laravel-env", values)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *Service) createPods(ctx context.Context, run *provisionRun) error {
@@ -353,4 +384,13 @@ func randomString(minLen, maxLen int) (string, error) {
 	}
 
 	return string(result), nil
+}
+
+func randomLaravelAppKey() (string, error) {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return "", err
+	}
+
+	return "base64:" + base64.StdEncoding.EncodeToString(key), nil
 }

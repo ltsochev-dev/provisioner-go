@@ -88,6 +88,45 @@ func (s *Service) CreateNamespace(ctx context.Context, name string) error {
 	return nil
 }
 
+func (s *Service) CreateOrUpdateSecret(ctx context.Context, ns string, name string, values map[string]string) error {
+	data := make(map[string][]byte, len(values))
+	for k, v := range values {
+		data[k] = []byte(v)
+	}
+
+	secrets := s.client.CoreV1().Secrets(ns)
+
+	existing, err := secrets.Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			_, err = secrets.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: ns,
+				},
+				Type: corev1.SecretTypeOpaque,
+				Data: data,
+			}, metav1.CreateOptions{})
+
+			return err
+		}
+
+		return err
+	}
+
+	if existing.Data == nil {
+		existing.Data = map[string][]byte{}
+	}
+
+	for k, v := range data {
+		existing.Data[k] = v
+	}
+
+	_, err = secrets.Update(ctx, existing, metav1.UpdateOptions{})
+
+	return err
+}
+
 func validateNamespaceName(name string) (string, error) {
 	errs := validation.ValidateNamespaceName(name, false)
 	if len(errs) > 0 {
