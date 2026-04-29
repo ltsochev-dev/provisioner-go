@@ -4,7 +4,9 @@ import (
 	"context"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -98,5 +100,111 @@ func TestNamespaceNameMustBeValid(t *testing.T) {
 	}
 	if err := service.CreateNamespace(context.Background(), "Not Valid"); err == nil {
 		t.Fatal("create namespace err = nil, want validation error")
+	}
+}
+
+func TestCreateOrUpdateLaravelWorkloadCreatesDeploymentAndService(t *testing.T) {
+	t.Parallel()
+
+	client := fake.NewSimpleClientset()
+	service, err := NewService(Config{Client: client})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	err = service.CreateOrUpdateLaravelWorkload(context.Background(), "acme", "erp-app-acme", "example/laravel-app:latest", "laravel-env")
+	if err != nil {
+		t.Fatalf("create workload: %v", err)
+	}
+
+	deployment, err := client.AppsV1().Deployments("acme").Get(context.Background(), "erp-app-acme", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get deployment: %v", err)
+	}
+	if deployment.Spec.Template.Spec.InitContainers[0].Name != "migrate" {
+		t.Fatalf("init container = %q, want migrate", deployment.Spec.Template.Spec.InitContainers[0].Name)
+	}
+	if deployment.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().String() != "500m" {
+		t.Fatalf("cpu request = %s, want 500m", deployment.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().String())
+	}
+
+	if _, err := client.CoreV1().Services("acme").Get(context.Background(), "erp-app-acme", metav1.GetOptions{}); err != nil {
+		t.Fatalf("get service: %v", err)
+	}
+}
+
+func TestCreateOrUpdateLaravelWorkloadUpdatesDeployment(t *testing.T) {
+	t.Parallel()
+
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "erp-app-acme", Namespace: "acme"},
+	})
+	service, err := NewService(Config{Client: client})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	err = service.CreateOrUpdateLaravelWorkload(context.Background(), "acme", "erp-app-acme", "example/laravel-app:latest", "laravel-env")
+	if err != nil {
+		t.Fatalf("update workload: %v", err)
+	}
+
+	deployment, err := client.AppsV1().Deployments("acme").Get(context.Background(), "erp-app-acme", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get deployment: %v", err)
+	}
+	if deployment.Spec.Template.Spec.Containers[0].Image != "example/laravel-app:latest" {
+		t.Fatalf("image = %q, want placeholder image", deployment.Spec.Template.Spec.Containers[0].Image)
+	}
+}
+
+func TestCreateOrUpdateIngressCreatesIngress(t *testing.T) {
+	t.Parallel()
+
+	client := fake.NewSimpleClientset()
+	service, err := NewService(Config{Client: client})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	err = service.CreateOrUpdateIngress(context.Background(), "acme", "erp-app-acme", "acme.example.com", "erp-app-acme")
+	if err != nil {
+		t.Fatalf("create ingress: %v", err)
+	}
+
+	ingress, err := client.NetworkingV1().Ingresses("acme").Get(context.Background(), "erp-app-acme", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get ingress: %v", err)
+	}
+	if ingress.Spec.Rules[0].Host != "acme.example.com" {
+		t.Fatalf("host = %q, want tenant domain", ingress.Spec.Rules[0].Host)
+	}
+	if ingress.Spec.IngressClassName == nil || *ingress.Spec.IngressClassName != "traefik" {
+		t.Fatalf("ingress class = %v, want traefik", ingress.Spec.IngressClassName)
+	}
+}
+
+func TestCreateOrUpdateIngressUpdatesIngress(t *testing.T) {
+	t.Parallel()
+
+	client := fake.NewSimpleClientset(&networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{Name: "erp-app-acme", Namespace: "acme"},
+	})
+	service, err := NewService(Config{Client: client})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	err = service.CreateOrUpdateIngress(context.Background(), "acme", "erp-app-acme", "acme.example.com", "erp-app-acme")
+	if err != nil {
+		t.Fatalf("update ingress: %v", err)
+	}
+
+	ingress, err := client.NetworkingV1().Ingresses("acme").Get(context.Background(), "erp-app-acme", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get ingress: %v", err)
+	}
+	if ingress.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name != "erp-app-acme" {
+		t.Fatalf("service = %q, want erp-app-acme", ingress.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name)
 	}
 }

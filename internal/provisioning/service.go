@@ -33,6 +33,8 @@ type KubernetesService interface {
 	NamespaceExists(ctx context.Context, name string) (bool, error)
 	CreateNamespace(ctx context.Context, name string) error
 	CreateOrUpdateSecret(ctx context.Context, ns string, name string, values map[string]string) error
+	CreateOrUpdateLaravelWorkload(ctx context.Context, ns string, name string, image string, secretName string) error
+	CreateOrUpdateIngress(ctx context.Context, ns string, name string, host string, serviceName string) error
 }
 
 type Config struct {
@@ -321,15 +323,41 @@ func (s *Service) addSecrets(ctx context.Context, run *provisionRun) error {
 }
 
 func (s *Service) createPods(ctx context.Context, run *provisionRun) error {
-	return ErrUnimplemented
+	const image = "ghcr.io/emo-erp:latest"
+
+	ns := tenantToNamespace(run.tenant)
+	name := tenantToWorkloadName(run.tenant)
+
+	return s.kubernetes.CreateOrUpdateLaravelWorkload(ctx, ns, name, image, "laravel-env")
 }
 
 func (s *Service) createIngress(ctx context.Context, run *provisionRun) error {
-	return ErrUnimplemented
+	ns := tenantToNamespace(run.tenant)
+	name := tenantToWorkloadName(run.tenant)
+
+	return s.kubernetes.CreateOrUpdateIngress(ctx, ns, name, run.tenant.Domain, name)
 }
 
 func (s *Service) finishProvisioning(ctx context.Context, run *provisionRun) error {
-	return ErrUnimplemented
+	result, err := s.db.ExecContext(
+		ctx,
+		"UPDATE tenants SET status = 'active' WHERE id = ?",
+		run.tenant.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("activate tenant %q: %w", run.tenant.ID, err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check activated tenant %q: %w", run.tenant.ID, err)
+	}
+
+	if rows == 0 {
+		return tenant.ErrNotFound
+	}
+
+	return nil
 }
 
 func tenantToDbName(t tenant.Tenant) string {
@@ -340,6 +368,12 @@ func tenantToDbName(t tenant.Tenant) string {
 
 func tenantToNamespace(t tenant.Tenant) string {
 	const prefix = "erp-ns-"
+
+	return safeString(t.Slug, prefix)
+}
+
+func tenantToWorkloadName(t tenant.Tenant) string {
+	const prefix = "erp-app-"
 
 	return safeString(t.Slug, prefix)
 }
