@@ -27,3 +27,23 @@ func TestRandomLaravelAppKey(t *testing.T) {
 		t.Fatalf("decoded key length = %d, want 32", len(decoded))
 	}
 }
+
+func TestMySQLIdentifier(t *testing.T) {
+	t.Parallel()
+
+	got := mysqlIdentifier("tenant_`odd`")
+	want := "`tenant_``odd```"
+	if got != want {
+		t.Fatalf("identifier = %q, want %q", got, want)
+	}
+}
+
+func TestMySQLString(t *testing.T) {
+	t.Parallel()
+
+	got := mysqlString("erp_user_o'clock")
+	want := "'erp_user_o''clock'"
+	if got != want {
+		t.Fatalf("string = %q, want %q", got, want)
+	}
+}

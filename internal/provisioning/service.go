@@ -190,8 +190,8 @@ func (s *Service) provision(ctx context.Context, tenantID string) {
 		name string
 		run  func(context.Context, *provisionRun) error
 	}{
-		{name: "create k8s namespace", run: s.createK8sNamespace},
 		{name: "create database", run: s.setDb},
+		{name: "create k8s namespace", run: s.createK8sNamespace},
 		{name: "add secrets", run: s.addSecrets},
 		{name: "create pods", run: s.createPods},
 		{name: "create ingress", run: s.createIngress},
@@ -250,43 +250,46 @@ func (s *Service) setDb(ctx context.Context, run *provisionRun) error {
 	defer tx.Rollback()
 
 	query := fmt.Sprintf(
-		"CREATE DATABASE IF NOT EXISTS `%s`",
-		strings.ReplaceAll(dbName, "`", "``"),
+		"CREATE DATABASE IF NOT EXISTS %s",
+		mysqlIdentifier(dbName),
 	)
 
 	_, err = tx.ExecContext(ctx, query)
 	if err != nil {
-		return err
+		return fmt.Errorf("create database %q: %w", dbName, err)
 	}
 
 	query = fmt.Sprintf(
-		"CREATE USER IF NOT EXISTS `%s`@'%%' IDENTIFIED BY 'password'",
-		strings.ReplaceAll(dbUser, "`", "``"),
+		"CREATE USER IF NOT EXISTS %s@'%%' IDENTIFIED BY %s",
+		mysqlString(dbUser),
+		mysqlString(dbPass),
 	)
 
 	_, err = tx.ExecContext(ctx, query)
 	if err != nil {
-		return err
+		return fmt.Errorf("create database user %q: %w", dbUser, err)
 	}
 
 	query = fmt.Sprintf(
-		"ALTER USER '%s'@'%%' IDENTIFIED BY '%s'",
-		strings.ReplaceAll(dbUser, "`", "``"), strings.ReplaceAll(dbPass, "`", "``"),
+		"ALTER USER %s@'%%' IDENTIFIED BY %s",
+		mysqlString(dbUser),
+		mysqlString(dbPass),
 	)
 
 	_, err = tx.ExecContext(ctx, query)
 	if err != nil {
-		return err
+		return fmt.Errorf("set database user password for %q: %w", dbUser, err)
 	}
 
 	query = fmt.Sprintf(
-		"GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP ON `%s`.* TO '%s'@'%%'",
-		strings.ReplaceAll(dbName, "`", "``"), strings.ReplaceAll(dbUser, "`", "``"),
+		"GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP ON %s.* TO %s@'%%'",
+		mysqlIdentifier(dbName),
+		mysqlString(dbUser),
 	)
 
 	_, err = tx.ExecContext(ctx, query)
 	if err != nil {
-		return err
+		return fmt.Errorf("grant database privileges on %q to %q: %w", dbName, dbUser, err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -440,6 +443,14 @@ func safeString(str string, prefix string) string {
 	}
 
 	return b.String()
+}
+
+func mysqlIdentifier(value string) string {
+	return "`" + strings.ReplaceAll(value, "`", "``") + "`"
+}
+
+func mysqlString(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()"
