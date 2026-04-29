@@ -15,6 +15,7 @@ type Config struct {
 	DatabaseURL      string
 	Port             string
 	ProvisionerToken string
+	KubeconfigPath   string
 }
 
 func Load() (Config, error) {
@@ -22,6 +23,7 @@ func Load() (Config, error) {
 		DatabaseURL:      os.Getenv("DATABASE_URL"),
 		Port:             envOrDefault("PROVISIONER_PORT", defaultPort),
 		ProvisionerToken: envOrDefault("PROVISIONER_TOKEN", defaultProvisionerToken),
+		KubeconfigPath:   os.Getenv("KUBECONFIG"),
 	}
 
 	if cfg.DatabaseURL == "" {

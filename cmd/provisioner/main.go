@@ -13,6 +13,7 @@ import (
 	"erp/provisioner/internal/config"
 	"erp/provisioner/internal/database"
 	"erp/provisioner/internal/httpapi"
+	k8s "erp/provisioner/internal/kubernetes"
 	"erp/provisioner/internal/provisioning"
 	"erp/provisioner/internal/tenant"
 )
@@ -41,10 +42,22 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	tenantStore := tenant.NewMySQLStore(db)
 	tenantService := tenant.NewService(tenantStore)
+
+	kubeRESTConfig, err := k8s.RESTConfig(cfg.KubeconfigPath)
+	if err != nil {
+		return err
+	}
+
+	kubernetesService, err := k8s.NewService(k8s.Config{RESTConfig: kubeRESTConfig})
+	if err != nil {
+		return err
+	}
+
 	provisioningService := provisioning.NewService(provisioning.Config{
-		Store:  tenantStore,
-		DB:     db,
-		Logger: logger,
+		Store:      tenantStore,
+		DB:         db,
+		Kubernetes: kubernetesService,
+		Logger:     logger,
 	})
 
 	server := httpapi.NewServer(httpapi.ServerConfig{
