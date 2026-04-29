@@ -1,13 +1,14 @@
 package tenant
 
 type Tenant struct {
-	ID     string `json:"id"`
-	Email  string `json:"email,omitempty"`
-	Name   string `json:"name,omitempty"`
-	Slug   string `json:"slug"`
-	Domain string `json:"domain"`
-	Plan   string `json:"plan"`
-	Status string `json:"status"`
+	ID        string `json:"id"`
+	Email     string `json:"email,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Slug      string `json:"slug"`
+	Domain    string `json:"domain"`
+	Plan      string `json:"plan"`
+	Status    string `json:"status"`
+	SecretKey string `json:"-"`
 }
 
 type CreateRequest struct {

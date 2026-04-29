@@ -295,6 +295,7 @@ func (s *Service) addSecrets(ctx context.Context, run *provisionRun) error {
 		"APP_ENV":          "production",
 		"APP_DEBUG":        "false",
 		"APP_URL":          "https://" + run.tenant.Domain,
+		"TENANT_API_KEY":   run.tenant.SecretKey,
 		"DB_CONNECTION":    "mysql",
 		"DB_HOST":          "localhost",
 		"DB_PORT":          "3306",

@@ -209,15 +209,17 @@ func (s *MySQLStore) BeginProvision(ctx context.Context, tenantId string) (Tenan
 	defer tx.Rollback()
 
 	row := tx.QueryRowContext(ctx, `
-		SELECT id, name, email, slug, domain, plan, status FROM tenants
-		WHERE id = ? AND status = ?
+		SELECT tenants.id, tenants.name, tenants.email, tenants.slug, tenants.domain, tenants.plan, tenants.status, tenant_keys.key
+		FROM tenants
+		JOIN tenant_keys ON tenant_keys.tenant_id = tenants.id
+		WHERE tenants.id = ? AND tenants.status = ?
 		FOR UPDATE SKIP LOCKED
 	`,
 		tenantId, "pending",
 	)
 
 	var tenant Tenant
-	if err := row.Scan(&tenant.ID, &tenant.Name, &tenant.Email, &tenant.Slug, &tenant.Domain, &tenant.Plan, &tenant.Status); err != nil {
+	if err := row.Scan(&tenant.ID, &tenant.Name, &tenant.Email, &tenant.Slug, &tenant.Domain, &tenant.Plan, &tenant.Status, &tenant.SecretKey); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Tenant{}, ErrNotFound
 		}
