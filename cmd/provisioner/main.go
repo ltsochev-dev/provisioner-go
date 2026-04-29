@@ -54,10 +54,11 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	provisioningService := provisioning.NewService(provisioning.Config{
-		Store:      tenantStore,
-		DB:         db,
-		Kubernetes: kubernetesService,
-		Logger:     logger,
+		Store:          tenantStore,
+		DB:             db,
+		Kubernetes:     kubernetesService,
+		TenantAppImage: cfg.TenantAppImage,
+		Logger:         logger,
 	})
 
 	server := httpapi.NewServer(httpapi.ServerConfig{

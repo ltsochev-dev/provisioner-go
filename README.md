@@ -10,6 +10,7 @@ Provisions k3s namespaces and tenants for Emo ERP.
 | `PROVISIONER_PORT`  | No       | `8181`            | HTTP port for the API server.                                             |
 | `PROVISIONER_TOKEN` | No       | `dev-token`       | Bearer token for provisioner API calls.                                   |
 | `KUBECONFIG`        | No       | client-go default | Path to kubeconfig. In-cluster config is used when running in Kubernetes. |
+| `TENANT_APP_IMAGE`  | Yes      |                   | Docker image used for tenant Laravel pods and migration init containers.  |
 
 ## Development
 

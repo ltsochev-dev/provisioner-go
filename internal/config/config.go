@@ -16,6 +16,7 @@ type Config struct {
 	Port             string
 	ProvisionerToken string
 	KubeconfigPath   string
+	TenantAppImage   string
 }
 
 func Load() (Config, error) {
@@ -24,10 +25,14 @@ func Load() (Config, error) {
 		Port:             envOrDefault("PROVISIONER_PORT", defaultPort),
 		ProvisionerToken: envOrDefault("PROVISIONER_TOKEN", defaultProvisionerToken),
 		KubeconfigPath:   os.Getenv("KUBECONFIG"),
+		TenantAppImage:   os.Getenv("TENANT_APP_IMAGE"),
 	}
 
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("DATABASE_URL is required")
+	}
+	if cfg.TenantAppImage == "" {
+		return Config{}, errors.New("TENANT_APP_IMAGE is required")
 	}
 
 	return cfg, nil

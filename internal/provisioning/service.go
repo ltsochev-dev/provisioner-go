@@ -44,6 +44,7 @@ type Config struct {
 	Store            TenantStore
 	DB               *sql.DB
 	Kubernetes       KubernetesService
+	TenantAppImage   string
 }
 
 type Service struct {
@@ -54,6 +55,7 @@ type Service struct {
 	store            TenantStore
 	db               *sql.DB
 	kubernetes       KubernetesService
+	tenantAppImage   string
 	triggerCh        chan struct{}
 }
 
@@ -97,6 +99,7 @@ func NewService(cfg Config) *Service {
 		store:            cfg.Store,
 		db:               cfg.DB,
 		kubernetes:       cfg.Kubernetes,
+		tenantAppImage:   cfg.TenantAppImage,
 		triggerCh:        make(chan struct{}, 1),
 	}
 }
@@ -342,12 +345,10 @@ func (s *Service) addSecrets(ctx context.Context, run *provisionRun) error {
 }
 
 func (s *Service) createPods(ctx context.Context, run *provisionRun) error {
-	const image = "ghcr.io/emo-erp:latest"
-
 	ns := tenantToNamespace(run.tenant)
 	name := tenantToWorkloadName(run.tenant)
 
-	return s.kubernetes.CreateOrUpdateLaravelWorkload(ctx, ns, name, image, "laravel-env")
+	return s.kubernetes.CreateOrUpdateLaravelWorkload(ctx, ns, name, s.tenantAppImage, "laravel-env")
 }
 
 func (s *Service) createIngress(ctx context.Context, run *provisionRun) error {
