@@ -240,6 +240,8 @@ func (s *Service) setDb(ctx context.Context, run *provisionRun) error {
 		return err
 	}
 
+	s.logger.Info("Provisioning db for tenant", "tenant_id", run.tenant.ID)
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -252,28 +254,40 @@ func (s *Service) setDb(ctx context.Context, run *provisionRun) error {
 		strings.ReplaceAll(dbName, "`", "``"),
 	)
 
-	tx.ExecContext(ctx, query)
+	_, err = tx.ExecContext(ctx, query)
+	if err != nil {
+		return err
+	}
 
 	query = fmt.Sprintf(
 		"CREATE USER IF NOT EXISTS `%s`@'%%' IDENTIFIED BY 'password'",
 		strings.ReplaceAll(dbUser, "`", "``"),
 	)
 
-	tx.ExecContext(ctx, query)
+	_, err = tx.ExecContext(ctx, query)
+	if err != nil {
+		return err
+	}
 
 	query = fmt.Sprintf(
 		"ALTER USER '%s'@'%%' IDENTIFIED BY '%s'",
 		strings.ReplaceAll(dbUser, "`", "``"), strings.ReplaceAll(dbPass, "`", "``"),
 	)
 
-	tx.ExecContext(ctx, query)
+	_, err = tx.ExecContext(ctx, query)
+	if err != nil {
+		return err
+	}
 
 	query = fmt.Sprintf(
 		"GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP ON `%s`.* TO '%s'@'%%'",
 		strings.ReplaceAll(dbName, "`", "``"), strings.ReplaceAll(dbUser, "`", "``"),
 	)
 
-	tx.ExecContext(ctx, query)
+	_, err = tx.ExecContext(ctx, query)
+	if err != nil {
+		return err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return err
@@ -290,6 +304,8 @@ func (s *Service) setDb(ctx context.Context, run *provisionRun) error {
 
 func (s *Service) addSecrets(ctx context.Context, run *provisionRun) error {
 	ns := tenantToNamespace(run.tenant)
+
+	s.logger.Info("Provisioning secrets for", "tenant_id", run.tenant.ID, "ns", ns)
 
 	appKey, err := randomLaravelAppKey()
 	if err != nil {
@@ -341,7 +357,7 @@ func (s *Service) createIngress(ctx context.Context, run *provisionRun) error {
 func (s *Service) finishProvisioning(ctx context.Context, run *provisionRun) error {
 	result, err := s.db.ExecContext(
 		ctx,
-		"UPDATE tenants SET status = ? locked_at = NULL WHERE id = ?",
+		"UPDATE tenants SET status = ?, locked_at = NULL WHERE id = ?",
 		"active", run.tenant.ID,
 	)
 	if err != nil {
