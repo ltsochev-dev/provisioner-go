@@ -18,16 +18,16 @@ all: build-linux-amd64 build-linux-arm64 build-windows-amd64
 build: build-linux-amd64 build-linux-arm64
 
 build-native:
-	go build -o $(BUILD_DIR)/$(BINARY)-native $(PACKAGE)
+	go build -ldflags="-s -w" -o $(BUILD_DIR)/$(BINARY)-native $(PACKAGE)
 
 build-windows-amd64:
-	GOOS=windows GOARCH=amd64 go build -o $(BUILD_DIR)/$(BINARY)-windows-amd64.exe $(PACKAGE)
+	GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o $(BUILD_DIR)/$(BINARY)-windows-amd64.exe $(PACKAGE)
 
 build-linux-amd64:
-	GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(BINARY)-linux-amd64 $(PACKAGE)
+	GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o $(BUILD_DIR)/$(BINARY)-linux-amd64 $(PACKAGE)
 
 build-linux-arm64:
-	GOOS=linux GOARCH=arm64 go build -o $(BUILD_DIR)/$(BINARY)-linux-arm64 $(PACKAGE)
+	GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o $(BUILD_DIR)/$(BINARY)-linux-arm64 $(PACKAGE)
 
 run:
 	docker compose up -d

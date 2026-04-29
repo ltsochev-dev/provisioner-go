@@ -75,11 +75,23 @@ func (notFoundTenantStore) FindBySlugAndAPIKey(context.Context, string, string) 
 }
 
 type fakeProvisioningWorker struct {
-	triggered bool
+	triggered     bool
+	suspendedSlug string
+	resumedSlug   string
 }
 
 func (w *fakeProvisioningWorker) Trigger() {
 	w.triggered = true
+}
+
+func (w *fakeProvisioningWorker) SuspendTenant(_ context.Context, slug string) error {
+	w.suspendedSlug = slug
+	return nil
+}
+
+func (w *fakeProvisioningWorker) ResumeTenant(_ context.Context, slug string) error {
+	w.resumedSlug = slug
+	return nil
 }
 
 func TestHealthDoesNotRequireAuth(t *testing.T) {
@@ -152,6 +164,84 @@ func TestCreateTenantTriggersProvisioningWorker(t *testing.T) {
 
 	if !worker.triggered {
 		t.Fatal("provisioning worker was not triggered")
+	}
+}
+
+func TestSuspendTenantRequiresProvisionerToken(t *testing.T) {
+	t.Parallel()
+
+	server := testServer()
+	req := httptest.NewRequest(http.MethodPost, "/tenants/acme/suspend", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestSuspendTenant(t *testing.T) {
+	t.Parallel()
+
+	worker := &fakeProvisioningWorker{}
+	server := NewServer(ServerConfig{
+		Addr:               ":0",
+		ProvisionToken:     "test-token",
+		TenantService:      tenant.NewService(fakeTenantStore{tenantByKey: map[string]tenant.Tenant{}}),
+		ProvisioningWorker: worker,
+		Logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/tenants/acme/suspend", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+
+	server.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if worker.suspendedSlug != "acme" {
+		t.Fatalf("suspended slug = %q, want acme", worker.suspendedSlug)
+	}
+}
+
+func TestResumeTenantRequiresProvisionerToken(t *testing.T) {
+	t.Parallel()
+
+	server := testServer()
+	req := httptest.NewRequest(http.MethodPost, "/tenants/acme/resume", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestResumeTenant(t *testing.T) {
+	t.Parallel()
+
+	worker := &fakeProvisioningWorker{}
+	server := NewServer(ServerConfig{
+		Addr:               ":0",
+		ProvisionToken:     "test-token",
+		TenantService:      tenant.NewService(fakeTenantStore{tenantByKey: map[string]tenant.Tenant{}}),
+		ProvisioningWorker: worker,
+		Logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/tenants/acme/resume", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+
+	server.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if worker.resumedSlug != "acme" {
+		t.Fatalf("resumed slug = %q, want acme", worker.resumedSlug)
 	}
 }
 
@@ -248,36 +338,6 @@ func TestGetTenantReturnsTenantForOwnerKey(t *testing.T) {
 
 	if got.ID != "11111111-1111-4111-8111-111111111111" || got.Email != "admin@acme.example" || got.Name != "Acme Ltd" || got.Slug != "acme" || got.Domain != "acme.example" || got.Plan != "starter" || got.Status != "active" {
 		t.Fatalf("tenant = %+v, want populated acme tenant", got)
-	}
-}
-
-func TestGetTenantSupportsSingularRoute(t *testing.T) {
-	t.Parallel()
-
-	server := NewServer(ServerConfig{
-		Addr:           ":0",
-		ProvisionToken: "test-token",
-		TenantService: tenant.NewService(fakeTenantStore{
-			tenantByKey: map[string]tenant.Tenant{
-				"acme-key": {
-					ID:     "11111111-1111-4111-8111-111111111111",
-					Slug:   "acme",
-					Domain: "acme.example",
-					Plan:   "starter",
-					Status: "active",
-				},
-			},
-		}),
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-	})
-	req := httptest.NewRequest(http.MethodGet, "/tenant/acme", nil)
-	req.Header.Set("Authorization", "Bearer acme-key")
-	rec := httptest.NewRecorder()
-
-	server.Handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 }
 

@@ -21,8 +21,6 @@ const (
 	defaultBatchSize        = 25
 )
 
-var ErrUnimplemented = errors.New("unimplemented")
-
 type TenantStore interface {
 	Pending(ctx context.Context, limit int) ([]tenant.Tenant, error)
 	BeginProvision(ctx context.Context, tenantID string) (tenant.Tenant, error)
@@ -34,6 +32,7 @@ type KubernetesService interface {
 	CreateNamespace(ctx context.Context, name string) error
 	CreateOrUpdateSecret(ctx context.Context, ns string, name string, values map[string]string) error
 	CreateOrUpdateLaravelWorkload(ctx context.Context, ns string, name string, image string, secretName string) error
+	ScaleDeployment(ctx context.Context, ns string, name string, replicas int32) error
 	CreateOrUpdateIngress(ctx context.Context, ns string, name string, host string, serviceName string) error
 }
 
@@ -107,6 +106,14 @@ func (s *Service) Trigger() {
 	case s.triggerCh <- struct{}{}:
 	default:
 	}
+}
+
+func (s *Service) SuspendTenant(ctx context.Context, slug string) error {
+	return s.setTenantRunningState(ctx, slug, "suspended", 0)
+}
+
+func (s *Service) ResumeTenant(ctx context.Context, slug string) error {
+	return s.setTenantRunningState(ctx, slug, "active", 1)
 }
 
 func (s *Service) Run(ctx context.Context) {
@@ -334,8 +341,8 @@ func (s *Service) createIngress(ctx context.Context, run *provisionRun) error {
 func (s *Service) finishProvisioning(ctx context.Context, run *provisionRun) error {
 	result, err := s.db.ExecContext(
 		ctx,
-		"UPDATE tenants SET status = 'active' WHERE id = ?",
-		run.tenant.ID,
+		"UPDATE tenants SET status = ? locked_at = NULL WHERE id = ?",
+		"active", run.tenant.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("activate tenant %q: %w", run.tenant.ID, err)
@@ -346,6 +353,35 @@ func (s *Service) finishProvisioning(ctx context.Context, run *provisionRun) err
 		return fmt.Errorf("check activated tenant %q: %w", run.tenant.ID, err)
 	}
 
+	if rows == 0 {
+		return tenant.ErrNotFound
+	}
+
+	return nil
+}
+
+func (s *Service) setTenantRunningState(ctx context.Context, slug string, status string, replicas int32) error {
+	if !tenant.IsSafeSlug(slug) {
+		return tenant.ValidationError{Field: "slug", Message: "slug may only contain lowercase letters, numbers, and hyphens"}
+	}
+	if s.kubernetes == nil {
+		return errors.New("kubernetes services is required")
+	}
+
+	t := tenant.Tenant{Slug: slug}
+	if err := s.kubernetes.ScaleDeployment(ctx, tenantToNamespace(t), tenantToWorkloadName(t), replicas); err != nil {
+		return err
+	}
+
+	result, err := s.db.ExecContext(ctx, "UPDATE tenants SET status = ?, locked_at = NULL WHERE slug = ?", status, slug)
+	if err != nil {
+		return fmt.Errorf("set tenant %q status to %q: %w", slug, status, err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check tenant %q status update to %q: %w", slug, status, err)
+	}
 	if rows == 0 {
 		return tenant.ErrNotFound
 	}

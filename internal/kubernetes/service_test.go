@@ -158,6 +158,46 @@ func TestCreateOrUpdateLaravelWorkloadUpdatesDeployment(t *testing.T) {
 	}
 }
 
+func TestScaleDeployment(t *testing.T) {
+	t.Parallel()
+
+	replicas := int32(1)
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "erp-app-acme", Namespace: "acme"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &replicas},
+	})
+	service, err := NewService(Config{Client: client})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	err = service.ScaleDeployment(context.Background(), "acme", "erp-app-acme", 0)
+	if err != nil {
+		t.Fatalf("scale deployment: %v", err)
+	}
+
+	deployment, err := client.AppsV1().Deployments("acme").Get(context.Background(), "erp-app-acme", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get deployment: %v", err)
+	}
+	if deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != 0 {
+		t.Fatalf("replicas = %v, want 0", deployment.Spec.Replicas)
+	}
+}
+
+func TestScaleDeploymentIgnoresMissingDeployment(t *testing.T) {
+	t.Parallel()
+
+	service, err := NewService(Config{Client: fake.NewSimpleClientset()})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if err := service.ScaleDeployment(context.Background(), "acme", "erp-app-acme", 0); err != nil {
+		t.Fatalf("scale missing deployment: %v", err)
+	}
+}
+
 func TestCreateOrUpdateIngressCreatesIngress(t *testing.T) {
 	t.Parallel()
 

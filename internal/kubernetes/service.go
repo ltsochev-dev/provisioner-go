@@ -237,6 +237,24 @@ func (s *Service) CreateOrUpdateLaravelWorkload(ctx context.Context, ns string, 
 	return nil
 }
 
+func (s *Service) ScaleDeployment(ctx context.Context, ns string, name string, replicas int32) error {
+	deployments := s.client.AppsV1().Deployments(ns)
+	deployment, err := deployments.Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get deployment %q/%q: %w", ns, name, err)
+	}
+
+	deployment.Spec.Replicas = &replicas
+	if _, err := deployments.Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("scale deployment %q/%q: %w", ns, name, err)
+	}
+
+	return nil
+}
+
 func (s *Service) CreateOrUpdateIngress(ctx context.Context, ns string, name string, host string, serviceName string) error {
 	ingressClassName := "traefik"
 	pathType := networkingv1.PathTypePrefix

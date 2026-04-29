@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -18,6 +19,8 @@ type API struct {
 
 type ProvisioningWorker interface {
 	Trigger()
+	SuspendTenant(ctx context.Context, slug string) error
+	ResumeTenant(ctx context.Context, slug string) error
 }
 
 func (api *API) health(w http.ResponseWriter, r *http.Request) {
@@ -96,4 +99,45 @@ func (api *API) getTenants(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, tenants)
+}
+
+func (api *API) suspendTenant(w http.ResponseWriter, r *http.Request) {
+	api.setTenantRunningState(w, r, "suspended", func(ctx context.Context, slug string) error {
+		return api.provisioning.SuspendTenant(ctx, slug)
+	})
+}
+
+func (api *API) resumeTenant(w http.ResponseWriter, r *http.Request) {
+	api.setTenantRunningState(w, r, "active", func(ctx context.Context, slug string) error {
+		return api.provisioning.ResumeTenant(ctx, slug)
+	})
+}
+
+func (api *API) setTenantRunningState(w http.ResponseWriter, r *http.Request, status string, run func(context.Context, string) error) {
+	if api.provisioning == nil {
+		writeError(w, http.StatusInternalServerError, "provisioning worker is not configured")
+		return
+	}
+
+	err := run(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		var validationErr tenant.ValidationError
+		if errors.As(err, &validationErr) {
+			writeError(w, http.StatusBadRequest, validationErr.Error())
+			return
+		}
+		if errors.Is(err, tenant.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "tenant not found")
+			return
+		}
+
+		api.logger.Error("tenant state change failed", "slug", r.PathValue("slug"), "status", status, "err", err)
+		writeError(w, http.StatusInternalServerError, "tenant state change failed")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": status,
+		"tenant": r.PathValue("slug"),
+	})
 }
