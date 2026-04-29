@@ -207,14 +207,6 @@ func (s *Service) provision(ctx context.Context, tenantID string) {
 	s.logger.Info("tenant provisioning completed", "tenant_id", t.ID, "slug", t.Slug)
 }
 
-// # ensure namespace
-// # ensure database
-// # ensure db user
-// # ensure db grants
-// ensure secrets
-// ensure workload
-// ensure ingress
-
 func (s *Service) createK8sNamespace(ctx context.Context, run *provisionRun) error {
 	if s.kubernetes == nil {
 		return errors.New("kubernetes services is required")
